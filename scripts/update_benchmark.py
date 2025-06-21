@@ -13,7 +13,9 @@ END_MARK = "<!-- BENCHMARK_END -->"
 
 
 def main():
-    duration, amp_shape, phase_shape = run_demo()
+    duration_py, amp_shape, phase_shape = run_demo("python")
+    duration_scipy, _, _ = run_demo("scipy")
+    duration_mkl, _, _ = run_demo("mkl")
     commit = (
         subprocess.check_output(["git", "rev-parse", "--short", "HEAD"])\
         .decode().strip()
@@ -22,7 +24,11 @@ def main():
     pyver = platform.python_version()
     date = datetime.datetime.utcnow().isoformat() + "Z"
 
-    row = f"| {date} | {machine} | {pyver} | {commit} | {duration:.3f} | {amp_shape[0]}x{amp_shape[1]} | {phase_shape[0]}x{phase_shape[1]} |"
+    row = (
+        f"| {date} | {machine} | {pyver} | {commit} | "
+        f"{duration_py:.3f} | {duration_scipy:.3f} | {duration_mkl:.3f} | "
+        f"{amp_shape[0]}x{amp_shape[1]} | {phase_shape[0]}x{phase_shape[1]} |"
+    )
 
     path = "README.md"
     text = open(path).read().splitlines()
@@ -35,8 +41,8 @@ def main():
     table = text[start + 1:end]
     if not table or not table[0].startswith("| Date |"):
         header = [
-            "| Date | Machine | Python | Git | Runtime(s) | Amp shape | Phase shape |",
-            "|------|---------|--------|-----|-----------|-----------|-------------|",
+            "| Date | Machine | Python | Git | Python(s) | SciPy(s) | MKL(s) | Amp shape | Phase shape |",
+            "|------|---------|--------|-----|----------|---------|-------|-----------|-------------|",
         ]
         table = header + [row]
     else:
