@@ -20,6 +20,7 @@ def run_demo():
     A, phi = amplitude_phase(U)
     print(f"Field computed in {duration:.3f} s")
     print(f"Amplitude shape: {A.shape}, phase shape: {phi.shape}")
+    return duration, A.shape, phi.shape
 
 
 if __name__ == "__main__":
