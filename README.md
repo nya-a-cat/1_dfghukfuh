@@ -22,4 +22,5 @@ The following table is automatically updated by the GitHub Actions workflow.
 | Date | Machine | Python | Git | Python(s) | SciPy(s) | MKL(s) | Amp shape | Phase shape |
 |------|---------|--------|-----|----------|---------|-------|-----------|-------------|
 
+| 2025-06-21T14:32:53.330929Z | Linux-6.11.0-1015-azure-x86_64-with-glibc2.39 | 3.13.5 | 8cbfb0e | 0.016 | 0.057 | 0.009 | 64x64 | 64x64 |
 <!-- BENCHMARK_END -->
