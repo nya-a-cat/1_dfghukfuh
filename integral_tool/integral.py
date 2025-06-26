@@ -3,6 +3,7 @@
 from .python_impl import (
     point_source_wavefield,
     fresnel_hologram,
+    surface_huygens_fresnel,
     amplitude_phase,
 )
 
@@ -28,4 +29,5 @@ __all__ = [
     "fresnel_hologram_scipy",
     "fresnel_hologram_mkl",
     "amplitude_phase",
+    "surface_huygens_fresnel",
 ]
