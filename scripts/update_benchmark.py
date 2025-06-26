@@ -50,7 +50,7 @@ def update_table(row):
 
 def parse_rows():
     """Parse the benchmark table from README for plotting."""
-    lines = []
+    rows = []
     with open("README.md") as fh:
         in_table = False
         for line in fh:
@@ -59,21 +59,22 @@ def parse_rows():
                 continue
             if line.strip() == END_MARK:
                 break
-            if in_table:
-                lines.append(line.strip())
-    if not lines:
-        return []
-    reader = csv.reader([l.strip("|") for l in lines[1:]])
-    rows = []
-    for row in reader:
-        if len(row) < 9:
-            continue
-        rows.append({
-            "date": row[0].strip(),
-            "python": float(row[4]),
-            "scipy": float(row[5]),
-            "mkl": float(row[6]),
-        })
+            if not in_table:
+                continue
+            line = line.strip()
+            if not line or line.startswith("| Date ") or line.startswith("|------"):
+                continue
+            parts = [p.strip() for p in line.strip("|").split("|")]
+            if len(parts) < 9:
+                continue
+            rows.append(
+                {
+                    "date": parts[0],
+                    "python": float(parts[4]),
+                    "scipy": float(parts[5]),
+                    "mkl": float(parts[6]),
+                }
+            )
     return rows
 
 
@@ -104,7 +105,7 @@ def main():
     )
     machine = platform.platform()
     pyver = platform.python_version()
-    date = datetime.datetime.utcnow().isoformat() + "Z"
+    date = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
     row = (
         f"| {date} | {machine} | {pyver} | {commit} | "
