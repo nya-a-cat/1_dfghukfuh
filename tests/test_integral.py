@@ -4,6 +4,7 @@ from integral_tool.integral import (
     fresnel_hologram,
     fresnel_hologram_scipy,
     fresnel_hologram_mkl,
+    surface_huygens_fresnel,
     amplitude_phase,
 )
 
@@ -28,3 +29,12 @@ def test_scipy_and_mkl_shapes():
     U2 = fresnel_hologram_mkl(points, amp, grid, grid)
     assert U1.shape == (8, 8)
     assert U2.shape == (8, 8)
+
+
+def test_surface_integral_shape():
+    xs = np.linspace(-0.01, 0.01, 8)
+    ys = np.linspace(-0.01, 0.01, 8)
+    xg, yg = np.meshgrid(xs, ys, indexing="ij")
+    Us = np.ones_like(xg, dtype=np.complex128)
+    U = surface_huygens_fresnel(Us, xs, ys, xs, ys)
+    assert U.shape == (8, 8)
