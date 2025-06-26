@@ -10,28 +10,155 @@ jobs:
   benchmark:
     permissions:
       contents: write
+      actions: read
+      pull-requests: write
     runs-on: ubuntu-latest
+    
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
-      - uses: actions/setup-python@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
+          python-version: '3.11'
+          cache: 'pip'
+      
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+      
       - name: Run tests
-        run: PYTHONPATH=. pytest -q
-      - name: Run benchmark and update README
-        run: python scripts/update_benchmark.py
-      - name: Commit benchmark results
         run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@users.noreply.github.com"
-          git add README.md benchmark.png
-          git commit -m "Update benchmark results" || echo "No changes"
-          git push
+          PYTHONPATH=. pytest -q --tb=short
+      
+      - name: Debug before benchmark
+        run: |
+          echo "Current directory: $(pwd)"
+          echo "Files before benchmark:"
+          ls -la
+          echo "Python path:"
+          echo $PYTHONPATH
+      
+      - name: Run benchmark and update README
+        run: |
+          echo "Running benchmark script..."
+          python scripts/update_benchmark.py
+          echo "Benchmark script completed"
+      
+      - name: Debug after benchmark
+        run: |
+          echo "Files after benchmark:"
+          ls -la
+          echo "Looking for PNG files:"
+          find . -name "*.png" -type f || echo "No PNG files found"
+          if [ -f "benchmark.png" ]; then
+            echo "benchmark.png exists, size: $(stat -c%s benchmark.png) bytes"
+          else
+            echo "benchmark.png not found"
+          fi
+          if [ -f "README.md" ]; then
+            echo "README.md exists, checking if modified:"
+            git diff README.md || echo "No changes in README.md"
+          fi
+      
+      - name: Check git status
+        run: |
+          echo "Git status:"
+          git status
+          echo "Git diff:"
+          git diff --name-only
+          echo "Staged changes:"
+          git diff --staged --name-only || echo "No staged changes"
+      
+      - name: Commit and push changes
+        run: |
+          # Configure git
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          # Add files
+          git add README.md
+          
+          # Check if benchmark.png exists and add it
+          if [ -f "benchmark.png" ]; then
+            git add benchmark.png
+            echo "Added benchmark.png to staging"
+          else
+            echo "Warning: benchmark.png not found, skipping"
+          fi
+          
+          # Check if there are any staged changes
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            echo "Changes detected, committing..."
+            git commit -m "🚀 Update benchmark results and charts
+            
+            - Updated benchmark data
+            - Regenerated performance charts
+            - Automated update from GitHub Actions
+            
+            [skip ci]"
+            
+            echo "Pushing changes..."
+            git push
+            echo "Changes pushed successfully"
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Upload benchmark artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results
+          path: |
+            benchmark.png
+            README.md
+          retention-days: 30
+      
+      - name: Comment on PR (if applicable)
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            // Check if benchmark.png exists
+            if (fs.existsSync('benchmark.png')) {
+              const comment = `## 📊 Benchmark Results Updated
+              
+              The benchmark has been updated with the latest results. 
+              You can download the benchmark chart from the artifacts section.
+              
+              Generated at: ${new Date().toISOString()}`;
+              
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+            }
+      
+      - name: Final status
+        if: always()
+        run: |
+          echo "=== Workflow Summary ==="
+          echo "Workflow completed with status: ${{ job.status }}"
+          if [ -f "benchmark.png" ]; then
+            echo "✅ benchmark.png generated successfully"
+          else
+            echo "❌ benchmark.png not found"
+          fi
+          if [ -f "README.md" ]; then
+            echo "✅ README.md exists"
+          else
+            echo "❌ README.md not found"
+          fi
+          echo "=== End Summary ==="
