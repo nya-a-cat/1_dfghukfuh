@@ -4,3 +4,4 @@ pybind11
 cppimport
 setuptools
 pytest
+matplotlib
