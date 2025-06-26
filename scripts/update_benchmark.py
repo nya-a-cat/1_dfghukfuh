@@ -63,7 +63,16 @@ def parse_rows():
                 lines.append(line.strip())
     if not lines:
         return []
-    reader = csv.reader([l.strip("|") for l in lines[1:]])
+    data_lines = []
+    for l in lines[1:]:
+        if not l.strip():
+            continue
+        stripped = l.strip().strip("|")
+        if stripped.startswith("-"):
+            continue
+        data_lines.append(stripped)
+    
+    reader = csv.reader(data_lines, delimiter="|")
     rows = []
     for row in reader:
         if len(row) < 9:
