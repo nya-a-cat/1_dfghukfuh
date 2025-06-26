@@ -63,17 +63,27 @@ def parse_rows():
                 lines.append(line.strip())
     if not lines:
         return []
-    reader = csv.reader([l.strip("|") for l in lines[1:]])
+    # The table rows are pipe-separated Markdown lines like
+    # ``| col1 | col2 |``. ``csv.reader`` defaults to comma separation,
+    # so specify ``delimiter="|"`` to correctly split the values.  Strip
+    # the surrounding pipes first so we don't get empty columns.
+    reader = csv.reader([l.strip("|") for l in lines[1:]], delimiter="|")
     rows = []
     for row in reader:
         if len(row) < 9:
             continue
-        rows.append({
-            "date": row[0].strip(),
-            "python": float(row[4]),
-            "scipy": float(row[5]),
-            "mkl": float(row[6]),
-        })
+        try:
+            rows.append(
+                {
+                    "date": row[0].strip(),
+                    "python": float(row[4]),
+                    "scipy": float(row[5]),
+                    "mkl": float(row[6]),
+                }
+            )
+        except ValueError:
+            # Skip lines like the separator row (----|----|...).
+            continue
     return rows
 
 
