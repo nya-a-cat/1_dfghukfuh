@@ -4,3 +4,4 @@ tests/__pycache__/
 scripts/__pycache__/
 integral_tool/*.so
 integral_tool/.rendered.*
+.gradio/
