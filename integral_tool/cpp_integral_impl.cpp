@@ -1,16 +1,18 @@
 // cppimport
 <%
 setup_pybind11(cfg)
-cfg['compiler_args'] = ['-O3']
+cfg['compiler_args'] = ['-O3', '/openmp']
+cfg['linker_args'] = ['/openmp']
 %>
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
 #include <complex>
 #include <cmath>
+#include <omp.h>
 
 namespace py = pybind11;
 
-py::array_t<std::complex<double>> fresnel_hologram_mkl_impl(
+py::array_t<std::complex<double>> fresnel_hologram_cpp_impl(
     py::array_t<double, py::array::c_style | py::array::forcecast> points,
     py::array_t<std::complex<double>, py::array::c_style | py::array::forcecast> amplitude,
     py::array_t<double, py::array::c_style | py::array::forcecast> grid_x,
@@ -30,6 +32,7 @@ py::array_t<std::complex<double>> fresnel_hologram_mkl_impl(
     auto gy = grid_y.unchecked<1>();
     auto out = result.mutable_unchecked<2>();
 
+    #pragma omp parallel for
     for (ssize_t i = 0; i < nx; ++i) {
         for (ssize_t j = 0; j < ny; ++j) {
             std::complex<double> U(0.0, 0.0);
@@ -47,8 +50,8 @@ py::array_t<std::complex<double>> fresnel_hologram_mkl_impl(
     return result;
 }
 
-PYBIND11_MODULE(mkl_integral_impl, m) {
-    m.def("fresnel_hologram_mkl_impl", &fresnel_hologram_mkl_impl,
+PYBIND11_MODULE(cpp_integral_impl, m) {
+    m.def("fresnel_hologram_cpp_impl", &fresnel_hologram_cpp_impl,
           py::arg("points"), py::arg("amplitude"),
           py::arg("grid_x"), py::arg("grid_y"),
           py::arg("wavelength") = 532e-9,

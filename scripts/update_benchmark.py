@@ -4,211 +4,174 @@ import os
 import platform
 import subprocess
 import sys
+import time
 import matplotlib
+import psutil
 matplotlib.use('Agg')  # 确保使用非交互式后端
 import matplotlib.pyplot as plt
+import numpy as np
+
+# -----------------------------------------------------------
+# 1. 设置全局字体和图表风格
+# -----------------------------------------------------------
+plt.rcParams.update({
+    'font.size': 10,
+    'axes.labelsize': 12,
+    'axes.titlesize': 14,
+    'xtick.labelsize': 9,
+    'ytick.labelsize': 9,
+    'legend.fontsize': 10,
+    'grid.linestyle': ':',
+    'grid.color': 'lightgray',
+    'grid.alpha': 0.7,
+    'axes.prop_cycle': plt.cycler(color=plt.cm.Paired.colors)
+})
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from main import run_demo
-
-START_MARK = "<!-- BENCHMARK_START -->"
-END_MARK = "<!-- BENCHMARK_END -->"
+try:
+    from main import run_demo
+except ImportError:
+    print("Warning: main.py not found or run_demo not callable. Benchmarking will fail.", file=sys.stderr)
+    def run_demo(method):
+        print(f"Placeholder run_demo called for method: {method}")
+        return 0.1, (64, 64), (64, 64)
 
 def run_safe(method):
-    """Run a demo and catch errors so they are visible."""
+    """Run a demo and catch errors, measuring time and memory."""
+    process = psutil.Process(os.getpid())
+    initial_memory = process.memory_info().rss
     try:
         duration, amp_shape, phase_shape = run_demo(method)
-        return duration, amp_shape, phase_shape, None
-    except Exception as exc:  # pragma: no cover - display runtime issues
+        final_memory = process.memory_info().rss
+        memory_used = final_memory - initial_memory
+        return duration, memory_used, amp_shape, phase_shape, None
+    except Exception as exc:
         print(f"{method} failed: {exc}", file=sys.stderr)
-        return float("nan"), (0, 0), (0, 0), str(exc)
+        return float("nan"), float("nan"), (0, 0), (0, 0), str(exc)
 
-def update_table(row):
-    path = "README.md"
-    text = open(path).read().splitlines()
+def get_git_commit():
+    """Get the short hash of the current git commit."""
     try:
-        start = text.index(START_MARK)
-        end = text.index(END_MARK)
-    except ValueError:
-        raise SystemExit("Benchmark markers not found in README")
-    
-    table = text[start + 1 : end]
-    if not table or not table[0].startswith("| Date |"):
-        header = [
-            "| Date | Machine | Python | Git | Python(s) | SciPy(s) | MKL(s) | Amp shape | Phase shape |",
-            "|------|---------|--------|-----|----------|---------|-------|-----------|------------|",
-        ]
-        table = header + [row]
-    else:
-        table.append(row)
-    
-    text[start + 1 : end] = table
-    with open(path, "w") as fh:
-        fh.write("\n".join(text) + "\n")
+        commit = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"]).decode().strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        commit = "unknown"
+    return commit
 
-def parse_rows():
-    """Parse the benchmark table from README for plotting."""
-    lines = []
-    with open("README.md") as fh:
-        in_table = False
-        for line in fh:
-            if line.strip() == START_MARK:
-                in_table = True
-                continue
-            if line.strip() == END_MARK:
-                break
-            if in_table:
-                lines.append(line.strip())
-    
-    if not lines:
+def append_to_csv(data_row, filepath="benchmark_results.csv"):
+    """Append a new row of data to the CSV file."""
+    file_exists = os.path.isfile(filepath)
+    with open(filepath, 'a', newline='') as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=data_row.keys())
+        if not file_exists:
+            writer.writeheader()
+        writer.writerow(data_row)
+    print(f"✅ Appended results to {filepath}")
+
+def read_from_csv(filepath="benchmark_results.csv"):
+    """Read all benchmark data from the CSV file."""
+    if not os.path.exists(filepath):
+        print(f"Warning: Benchmark data file not found at {filepath}", file=sys.stderr)
         return []
     
-    # 过滤掉表头和分隔符行
-    data_lines = []
-    for line in lines:
-        if line.startswith("|") and not line.startswith("|---"):
-            # 跳过表头
-            if "Date" not in line:
-                data_lines.append(line)
-    
-    if not data_lines:
-        return []
-    
-    reader = csv.reader([l.strip("|") for l in data_lines])
     rows = []
-    for row in reader:
-        if len(row) < 9:
-            continue
-        try:
-            rows.append({
-                "date": row[0].strip(),
-                "python": float(row[4].strip()),
-                "scipy": float(row[5].strip()),
-                "mkl": float(row[6].strip()),
-            })
-        except (ValueError, IndexError) as e:
-            print(f"Error parsing row {row}: {e}", file=sys.stderr)
-            continue
-    
+    with open(filepath, 'r') as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            processed_row = {}
+            for key, value in row.items():
+                try:
+                    processed_row[key] = float(value)
+                except (ValueError, TypeError):
+                    processed_row[key] = value
+            rows.append(processed_row)
     return rows
 
 def plot(rows):
-    """Generate benchmark plot."""
-    print(f"Plotting {len(rows)} data points...")
-    
+    """Generate benchmark plot showing time and memory usage for the latest run."""
+    print(f"Plotting data for {len(rows)} total runs...")
+
     if not rows:
         print("No data to plot, creating empty plot...")
-        plt.figure(figsize=(8, 4))
-        plt.text(0.5, 0.5, 'No benchmark data available', 
+        fig, ax = plt.subplots(figsize=(8, 4))
+        ax.text(0.5, 0.5, 'No benchmark data available',
                 horizontalalignment='center', verticalalignment='center',
-                transform=plt.gca().transAxes, fontsize=16)
-        plt.title("Benchmark Results")
+                transform=ax.transAxes, fontsize=16)
+        ax.set_title("Benchmark Results")
         plt.tight_layout()
         plt.savefig("benchmark.png", dpi=300, bbox_inches='tight')
-        plt.close()
-        print("Empty benchmark plot saved as benchmark.png")
+        plt.close(fig)
         return
-    
-    dates = [r["date"] for r in rows]
-    py = [r["python"] for r in rows]
-    sp = [r["scipy"] for r in rows]
-    mk = [r["mkl"] for r in rows]
-    
-    plt.figure(figsize=(10, 6))
-    plt.plot(dates, py, label="Python", marker='o', linewidth=2)
-    plt.plot(dates, sp, label="SciPy", marker='s', linewidth=2)
-    plt.plot(dates, mk, label="MKL", marker='^', linewidth=2)
-    
-    plt.xticks(rotation=45, ha="right")
-    plt.ylabel("Time (s)")
-    plt.title("Benchmark Performance Over Time")
-    plt.grid(True, alpha=0.3)
-    plt.legend()
+
+    latest_run = rows[-1]
+    methods = ['Python', 'SciPy', 'CPP']
+    time_values = [latest_run['python_time'], latest_run['scipy_time'], latest_run['cpp_time']]
+    memory_values = [latest_run['python_memory'], latest_run['scipy_memory'], latest_run['cpp_memory']]
+
+    x = np.arange(len(methods))
+    width = 0.35
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
+
+    # Plotting Time
+    ax1.bar(x, time_values, width, label='Time (s)', color='royalblue')
+    ax1.set_ylabel('Time (s)')
+    ax1.set_title('Benchmark Runtime by Method')
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(methods)
+    ax1.grid(axis='y', linestyle=':', alpha=0.7)
+
+    # Plotting Memory
+    ax2.bar(x, memory_values, width, label='Memory (MB)', color='sandybrown')
+    ax2.set_ylabel('Memory (MB)')
+    ax2.set_title('Benchmark Memory Usage by Method')
+    ax2.set_xticks(x)
+    ax2.set_xticklabels(methods)
+    ax2.grid(axis='y', linestyle=':', alpha=0.7)
+
+    fig.suptitle(f"Benchmark Performance - {latest_run['date']}")
     plt.tight_layout()
-    
-    # 保存图片
     plt.savefig("benchmark.png", dpi=300, bbox_inches='tight')
-    plt.close()
-    print("Benchmark plot saved as benchmark.png")
+    plt.close(fig)
+    print("✅ Benchmark plot saved as benchmark.png")
 
 def main():
     print("Starting benchmark update...")
-    print(f"Current working directory: {os.getcwd()}")
-    print(f"Script location: {__file__}")
     
-    # 确保matplotlib可以正常工作
-    try:
-        import matplotlib.pyplot as plt
-        print("✅ Matplotlib imported successfully")
-    except ImportError as e:
-        print(f"❌ Matplotlib import failed: {e}")
-        return
-    
-    # 运行基准测试
+    # Run benchmarks
     print("Running benchmarks...")
-    duration_py, amp_shape, phase_shape, error_py = run_safe("python")
-    duration_scipy, _, _, error_scipy = run_safe("scipy")
-    duration_mkl, _, _, error_mkl = run_safe("mkl")
+    duration_py, memory_py, amp_shape, phase_shape, error_py = run_safe("python")
+    duration_scipy, memory_scipy, _, _, error_scipy = run_safe("scipy")
+    duration_cpp, memory_cpp, _, _, error_cpp = run_safe("cpp")
     
-    print(f"Python: {duration_py:.3f}s (error: {error_py})")
-    print(f"SciPy: {duration_scipy:.3f}s (error: {error_scipy})")
-    print(f"MKL: {duration_mkl:.3f}s (error: {error_mkl})")
+    print(f"Python: {duration_py:.3f}s, {memory_py / (1024*1024):.2f}MB (error: {error_py})")
+    print(f"SciPy: {duration_scipy:.3f}s, {memory_scipy / (1024*1024):.2f}MB (error: {error_scipy})")
+    print(f"CPP: {duration_cpp:.3f}s, {memory_cpp / (1024*1024):.2f}MB (error: {error_cpp})")
     
-    # 获取系统信息
-    try:
-        commit = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"]).decode().strip()
-    except subprocess.CalledProcessError:
-        commit = "unknown"
+    # Create data dictionary
+    data_row = {
+        "date": datetime.datetime.utcnow().isoformat(timespec='seconds') + "Z",
+        "machine": platform.platform(terse=True),
+        "python_version": platform.python_version(),
+        "git_commit": get_git_commit(),
+        "python_time": f"{duration_py:.3f}",
+        "python_memory": f"{memory_py / (1024*1024):.2f}",
+        "scipy_time": f"{duration_scipy:.3f}",
+        "scipy_memory": f"{memory_scipy / (1024*1024):.2f}",
+        "cpp_time": f"{duration_cpp:.3f}",
+        "cpp_memory": f"{memory_cpp / (1024*1024):.2f}",
+        "amp_shape": f"{amp_shape[0]}x{amp_shape[1]}",
+        "phase_shape": f"{phase_shape[0]}x{phase_shape[1]}",
+        "error_python": error_py,
+        "error_scipy": error_scipy,
+        "error_cpp": error_cpp,
+    }
     
-    machine = platform.platform()
-    pyver = platform.python_version()
-    date = datetime.datetime.utcnow().isoformat() + "Z"
+    # Append to CSV
+    append_to_csv(data_row)
     
-    # 创建表格行
-    row = (
-        f"| {date} | {machine} | {pyver} | {commit} | "
-        f"{duration_py:.3f} | {duration_scipy:.3f} | {duration_mkl:.3f} | "
-        f"{amp_shape[0]}x{amp_shape[1]} | {phase_shape[0]}x{phase_shape[1]} |"
-    )
-    
-    print(f"Adding row: {row}")
-    
-    # 更新表格
-    try:
-        update_table(row)
-        print("✅ Table updated successfully")
-    except Exception as e:
-        print(f"❌ Failed to update table: {e}")
-        return
-    
-    # 解析数据并生成图表
-    try:
-        rows = parse_rows()
-        print(f"Parsed {len(rows)} rows from table")
-        plot(rows)
-        print("✅ Plot generated successfully")
-    except Exception as e:
-        print(f"❌ Failed to generate plot: {e}")
-        # 即使解析失败，也创建一个基本的图表
-        try:
-            plt.figure(figsize=(8, 4))
-            plt.text(0.5, 0.5, f'Error generating plot: {str(e)}', 
-                    horizontalalignment='center', verticalalignment='center',
-                    transform=plt.gca().transAxes, fontsize=12)
-            plt.title("Benchmark Results (Error)")
-            plt.tight_layout()
-            plt.savefig("benchmark.png", dpi=300, bbox_inches='tight')
-            plt.close()
-            print("Error plot saved as benchmark.png")
-        except Exception as e2:
-            print(f"❌ Failed to create error plot: {e2}")
-    
-    # 验证文件是否创建
-    if os.path.exists("benchmark.png"):
-        file_size = os.path.getsize("benchmark.png")
-        print(f"✅ benchmark.png created successfully ({file_size} bytes)")
-    else:
-        print("❌ benchmark.png was not created")
+    # Read all data and generate plot
+    all_data = read_from_csv()
+    plot(all_data)
     
     print("Benchmark update completed!")
 

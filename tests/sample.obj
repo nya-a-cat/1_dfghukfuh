@@ -1,0 +1,8 @@
+# A sample .obj file for testing.
+# It contains three vertices.
+
+v 0.01 0.01 0.0
+v -0.01 0.01 0.0
+v 0.0  -0.01 0.0
+
+# End of file
